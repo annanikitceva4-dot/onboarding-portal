@@ -7,7 +7,7 @@
   - [requirements.md](week1/requirements.md) – ФТ и НФТ
   - [user-stories.md](week1/user-stories.md)
   - [use-cases.md](week1/use-cases.md)
-  - [bpmn-diagram.png](week1/bpmn-diagram.png) – диаграмма процесса To-Be
+  - [bpmn-diagram.png](week1/ДиаграммаBPMN.drawio.png) – диаграмма процесса To-Be
   - [questions.md](week1/questions.md) – вопросы заказчику
 
 ## Как использовать
