@@ -1,6 +1,6 @@
 # SQL-запросы для портала онбординга (PostgreSQL)
 
-Все запросы написаны для базы данных, описанной в ER-диаграмме. Основные таблицы: `Users`, `Roles`, `Tasks`, `EquipmentRequests`, `OnboardingFlows`, `Comments`, `TaskApprovals`.
+Все запросы написаны на основе схемы базы данных, описанной в ER-диаграмме.
 
 ---
 
@@ -9,107 +9,107 @@
 **Назначение:** отобразить на дашборде новичка все задачи, которые ещё не выполнены, с сортировкой по сроку выполнения.
 
 ```sql
-SELECT id, title, deadline, status
-FROM tasks
-WHERE assignee_id = 123 
-  AND status != 'completed'
-ORDER BY deadline ASC;
+SELECT ID, Заголовок, Срок, Статус
+FROM Задачи
+WHERE ID_Пользователя = 123 
+  AND Статус != 'выполнена'
+ORDER BY Срок ASC;
 ```
 
-**Примечание:** в реальном запросе `assignee_id` будет браться из сессии текущего пользователя.
+**Примечание:** ID новичка (123) передаётся из сессии текущего пользователя.
 
 ---
 
-## 2. Прогресс выполнения чек-листа (в процентах)
+## 2. Прогресс выполнения чек-листа для новичка (в процентах)
 
 **Назначение:** показать на дашборде процент завершения всех задач для конкретного новичка.
 
 ```sql
 SELECT 
-  ROUND(COUNT(*) FILTER (WHERE status = 'completed') * 100.0 / COUNT(*), 2) AS progress_percent
-FROM tasks
-WHERE assignee_id = 123;
+  ROUND(COUNT(*) FILTER (WHERE Статус = 'выполнена') * 100.0 / COUNT(*), 2) AS progress_percent
+FROM Задачи
+WHERE ID_Пользователя = 123;
 ```
 
 ---
 
-## 3. Список подопечных для наставника
+## 3. Список подопечных для наставника с количеством их задач
 
 **Назначение:** отобразить наставнику всех новичков, закреплённых за ним, с количеством их задач.
 
 ```sql
-SELECT u.id, u.name, COUNT(t.id) AS total_tasks
-FROM users u
-LEFT JOIN tasks t ON u.id = t.assignee_id
-WHERE u.mentor_id = 456
-GROUP BY u.id, u.name;
+SELECT u.ID, u.ФИО, COUNT(t.ID) AS total_tasks
+FROM Пользователи u
+LEFT JOIN Задачи t ON u.ID = t.ID_Пользователя
+WHERE u.ID_Наставника = 456
+GROUP BY u.ID, u.ФИО;
 ```
+
+**Примечание:** ID наставника (456) передаётся из сессии текущего пользователя.
 
 ---
 
-## 4. Количество заявок на оборудование по типам
+## 4. Количество заявок на оборудование по типам (HR-отчёт)
 
-**Назначение:** HR-отчёт – сколько заявок каждого типа оборудования подано.
+**Назначение:** получить статистику по типам оборудования, чтобы понять, что чаще всего заказывают новички.
 
 ```sql
-SELECT equipment_type, COUNT(*) AS request_count
-FROM equipment_requests
-GROUP BY equipment_type
-ORDER BY request_count DESC;
+SELECT Тип_оборудования, COUNT(*) AS count
+FROM Заявки_на_оборудование
+GROUP BY Тип_оборудования
+ORDER BY count DESC;
 ```
 
 ---
 
 ## 5. Среднее время выполнения задач по новичкам (в днях)
 
-**Назначение:** оценить, сколько в среднем уходит на выполнение одной задачи для каждого новичка.
+**Назначение:** оценить эффективность онбординга – сколько в среднем уходит на выполнение одной задачи.
 
 ```sql
-SELECT assignee_id, 
-       AVG(EXTRACT(DAY FROM (updated_at - created_at))) AS avg_days
-FROM tasks
-WHERE status = 'completed' AND updated_at IS NOT NULL
-GROUP BY assignee_id;
+SELECT ID_Пользователя, 
+       AVG(EXTRACT(DAY FROM (Дата_создания - Срок))) AS avg_days
+FROM Задачи
+WHERE Статус = 'выполнена' 
+  AND Дата_создания IS NOT NULL
+GROUP BY ID_Пользователя;
 ```
 
-**Примечание:** если нет даты завершения (`updated_at`), задача считается не завершённой.
+**Примечание:** предполагается, что `Дата_создания` – это дата, когда задача была выполнена (в вашей схеме это поле есть в таблице `Комментарии`, но для простоты используем `Срок` как дату завершения). Если задача выполнена, дата обновляется.
 
 ---
 
 ## 6. Список задач, ожидающих утверждения руководителем
 
-**Назначение:** показать руководителю задачи, которые требуют его подтверждения (статус `'pending_approval'`).
+**Назначение:** показать руководителю задачи, которые требуют его подтверждения (статус `'ожидает утверждения'`).
 
 ```sql
-SELECT t.id, t.title, u.name AS assignee_name, t.deadline
-FROM tasks t
-JOIN users u ON t.assignee_id = u.id
-WHERE t.status = 'pending_approval'
-  AND t.assignee_id IN (
-    SELECT id FROM users WHERE mentor_id IS NOT NULL
-  );
+SELECT t.ID, t.Заголовок, u.ФИО AS assignee_name, t.Срок
+FROM Задачи t
+JOIN Пользователи u ON t.ID_Пользователя = u.ID
+WHERE t.Статус = 'ожидает утверждения';
 ```
 
 ---
 
 ## 7. Комплексный отчёт по новичкам для HR
 
-**Назначение:** сводка – сколько новичков всего, средний прогресс по чек-листам, общее количество заявок на оборудование.
+**Назначение:** сводка – сколько новичков в процессе, средний прогресс, сколько заявок на оборудование подано.
 
 ```sql
 SELECT 
-  COUNT(DISTINCT u.id) AS newbies_count,
+  COUNT(DISTINCT u.ID) AS newbies_count,
   COALESCE(ROUND(AVG(comp.progress), 2), 0) AS avg_progress,
-  COUNT(eq.id) AS total_equipment_requests
-FROM users u
+  COUNT(eq.ID) AS total_equipment_requests
+FROM Пользователи u
 LEFT JOIN (
-  SELECT assignee_id, 
-         COUNT(*) FILTER (WHERE status = 'completed') * 100.0 / COUNT(*) AS progress
-  FROM tasks
-  GROUP BY assignee_id
-) comp ON u.id = comp.assignee_id
-LEFT JOIN equipment_requests eq ON u.id = eq.user_id
-WHERE u.role_id = (SELECT id FROM roles WHERE name = 'Новичок');
+  SELECT ID_Пользователя, 
+         COUNT(*) FILTER (WHERE Статус = 'выполнена') * 100.0 / COUNT(*) AS progress
+  FROM Задачи
+  GROUP BY ID_Пользователя
+) comp ON u.ID = comp.ID_Пользователя
+LEFT JOIN Заявки_на_оборудование eq ON u.ID = eq.ID_Пользователя
+WHERE u.ID_Роли = (SELECT ID FROM Роли WHERE Название_роли = 'Новичок');
 ```
 
-**Пояснение:** `COALESCE` нужен, чтобы при отсутствии задач показывать 0 вместо NULL. 
+**Пояснение:** `COALESCE` нужен, чтобы при отсутствии задач у новичка показывать 0 вместо NULL.
